@@ -1,15 +1,19 @@
 package namespacecreator
 
 import (
-        "testing"
-        "github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/assert"
+	"testing"
 )
 
-func testCreateNamespaces(t *testing.T) {
-        //given
-        //when
-        actual := CreateNamespaces()
-        //then
-        expected := "Creating namespaces...[ok]"
-        assert.Equal(t, expected, actual, "should be equal")
+func TestCreateNamespaces(t *testing.T) {
+	// given
+	namespaceCreator := &NamespaceCreatorImpl{}
+	// when
+	actualPid, actualHostname, err := namespaceCreator.CreateNamespaces()
+	// then
+	expectedPid := 1
+	expectedHostname := "container"
+	assert.Equal(t, expectedPid, actualPid, "should be equal")
+	assert.Equal(t, expectedHostname, actualHostname, "should be equal")
+	assert.Equal(t, nil, err, "should be equal")
 }
