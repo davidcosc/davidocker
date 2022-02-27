@@ -3,56 +3,77 @@ package namespacecreator
 import (
 	"fmt"
 	"os"
-	//"os/exec"
+	"os/exec"
 	"syscall"
 )
 
 type NamespaceCreator interface {
-	CreateNamespaces() (int, string, error)
+	CreateNamespaces(cmdArgs []string) error
+	FinalizeNamespaces() error
 }
 
 type NamespaceCreatorImpl struct{}
 
-func (namespaceCreatorImpl *NamespaceCreatorImpl) CreateNamespaces() (int, string, error) {
+func (namespaceCreatorImpl *NamespaceCreatorImpl) CreateNamespaces(cmdArgs []string) error {
 	// there is no point in unsharing the  PID namespace without forking
 	// unsharing the PID namespace does not move the calling process to the new PID namespace
 	// but instead moves the next child process
-	// to make full use of the PID namespace clone with NEWNS clone and unshare flag
+	// to make full use of the PID namespace clone with NEWNS clone flag
+	if len(cmdArgs) > 1 {
+		return namespaceCreatorImpl.FinalizeNamespaces()
+	}
 	fmt.Println("Creating namespaces")
-	err := syscall.Unshare(syscall.CLONE_NEWUTS | syscall.CLONE_NEWNS | syscall.CLONE_NEWPID)
-	if err != nil {
-		return -1, "", err
+	cmd := exec.Command("/proc/self/exe", "afterNamespaced")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWNS | syscall.CLONE_NEWPID,
 	}
-	fmt.Println("Setting hostname")
-	err = syscall.Sethostname([]byte("container"))
+	err := cmd.Run()
+	return err
+}
+
+func (namespaceCreatorImpl *NamespaceCreatorImpl) FinalizeNamespaces() error {
+	fmt.Println("Finalizing namespaces.............")
+	fmt.Println("Setting hostname..................")
+	err := syscall.Sethostname([]byte("container"))
 	if err != nil {
-		return -1, "", err
+		return err
 	}
-	fmt.Println("Chrooting")
+	fmt.Println("Chrooting.........................")
 	err = syscall.Chroot("/root/container")
 	if err != nil {
-		return -1, "", err
+		return err
 	}
-	fmt.Println("Changing working directory")
+	fmt.Println("Changing working directory........")
 	err = syscall.Chdir("/")
 	if err != nil {
-		return -1, "", err
+		return err
 	}
-	fmt.Println("Creating /proc dir if not exist")
+	fmt.Println("Creating /proc dir if not exist...")
 	if _, err := os.Stat("/proc"); os.IsNotExist(err) {
 		os.Mkdir("/proc", os.ModeDir)
 	}
-	fmt.Println("Mounting proc")
+	fmt.Println("Mounting proc.....................")
 	err = syscall.Mount("proc", "/proc", "proc", 0, "")
 	if err != nil {
-		return -1, "", err
-	}
-	fmt.Println("Cleanup mounts")
-	err = syscall.Unmount("/proc", 0)
-	if err != nil {
-		return -1, "", err
+		return err
 	}
 	hostname, err := os.Hostname()
-	pid := os.Getpid()
-	return pid, hostname, err
+	fmt.Printf("PID: %d Hostname: %s\n", os.Getpid(), hostname)
+	fmt.Println("Cleanup mounts....................")
+	cmd := exec.Command("lsns")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err = cmd.Run()
+	if err != nil {
+		return err
+	}
+	err = syscall.Unmount("/proc", 0)
+	if err != nil {
+		return err
+	}
+	return nil
 }

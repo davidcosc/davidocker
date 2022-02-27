@@ -1,15 +1,14 @@
 package main
 
 import (
-	"fmt"
 	"github.com/davidcosc/davidocker/namespacecreator"
+	"os"
 )
 
 func main() {
 	namespaceCreator := &namespacecreator.NamespaceCreatorImpl{}
-	pid, hostname, err := namespaceCreator.CreateNamespaces()
+	err := namespaceCreator.CreateNamespaces(os.Args)
 	if err != nil {
-		fmt.Printf("PID: %d\n", pid)
-		fmt.Println("Hostname: " + hostname)
+		panic(err)
 	}
 }
