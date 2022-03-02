@@ -5,11 +5,16 @@ import (
 	"testing"
 )
 
-func TestFinalizeContainer(t *testing.T) {
+func TestCreateContainer(t *testing.T) {
 	// given
-	//containerCreator := &ContainerCreatorImpl{}
+	containerCreator := &ContainerCreatorImpl{}
 	// when
-	//err := containerCreator.FinalizeContainer()
+	err := containerCreator.CreateContainerNamespaces([]string{"/proc/self/exe", "-run", "CreateContainerHelper"})
 	// then
-	assert.Equal(t, nil, nil, "should be equal")
+	assert.Equal(t, nil, err, "should be equal")
+}
+
+func CreateContainerHelper() {
+	containerCreator := &ContainerCreatorImpl{}
+	containerCreator.FinalizeContainer([]string{"echo"})
 }

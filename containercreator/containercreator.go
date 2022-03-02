@@ -18,21 +18,26 @@ func (containerCreatorImpl *ContainerCreatorImpl) CreateContainerNamespaces(cmdA
 	// unsharing the PID namespace does not move the calling process to the new PID namespace
 	// but instead moves the next child process
 	// used with clone however, will move the cloned Process immediately
+	cmd := exec.Command("/proc/self/exe", append([]string{"containerNamespacesCreated"}, cmdArgs...)...)
 	fmt.Println("Creating container namespaces.....")
-	cmd := exec.Command("/proc/self/exe", "containerNamespacesCreated")
-	cmd = prepareStdioDescriptors(cmd, os.Stdin, os.Stdout, os.Stderr)
+	fmt.Println("* Preparing stdio descriptors.....")
+	var err error
+	cmd, err = prepareStdioDescriptors(cmd)
+	if err != nil {
+		return err
+	}
 	cmd = prepareNamespaces(cmd)
 	fmt.Println("* Restarting self in namespaces...")
-	err := cmd.Start()
+	err = cmd.Start()
 	return err
 }
 
-func prepareStdioDescriptors(cmd *exec.Cmd, stdin, stdout, stderr *os.File) *exec.Cmd {
-	fmt.Println("* Preparing stdio descriptors.....")
-	cmd.Stdin = stdin
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	return cmd
+func prepareStdioDescriptors(cmd *exec.Cmd) (*exec.Cmd, error) {
+	var err error
+	cmd.Stdin, err = os.Create("/root/container/stdin")
+	cmd.Stdout, err = os.Create("/root/container/stdout")
+	cmd.Stderr, err = os.Create("/root/container/stderr")
+	return cmd, err
 }
 
 func prepareNamespaces(cmd *exec.Cmd) *exec.Cmd {
@@ -43,7 +48,7 @@ func prepareNamespaces(cmd *exec.Cmd) *exec.Cmd {
 	return cmd
 }
 
-func (containerCreatorImpl *ContainerCreatorImpl) FinalizeContainer() error {
+func (containerCreatorImpl *ContainerCreatorImpl) FinalizeContainer(cmdArgs []string) error {
 	fmt.Println("Finalizing container..............")
 	fmt.Println("* Setting hostname................")
 	err := syscall.Sethostname([]byte("container"))
@@ -60,7 +65,7 @@ func (containerCreatorImpl *ContainerCreatorImpl) FinalizeContainer() error {
 	}
 	hostname, err := os.Hostname()
 	fmt.Printf("PID: %d Hostname: %s\n", os.Getpid(), hostname)
-	return syscall.Exec("/bin/sleep", []string{"/bin/sleep", "100s"}, []string{})
+	return syscall.Exec(cmdArgs[0], cmdArgs, []string{})
 }
 
 func changeRootFS() error {
