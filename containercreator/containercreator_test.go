@@ -30,7 +30,13 @@ func TestCreateContainer(t *testing.T) {
 * Creating /proc dir if not exist.
 * Mounting proc...................
 PID: 1 Hostname: container
-PASS
+bin
+lib
+lib64
+proc
+stderr
+stdin
+stdout
 `
 	assert.Equal(t, expectedContainerStdout, string(actualContainerStdout), "should be equal")
 }
@@ -42,7 +48,5 @@ func TestFinalizeContainer(t *testing.T) {
 	// given
 	containerCreator := &ContainerCreatorImpl{}
 	// when
-	containerCreator.FinalizeContainer([]string{"echo"})
-	// then
-	assert.Equal(t, nil, nil, "should be equal")
+	containerCreator.FinalizeContainer([]string{"/bin/ls"})
 }
