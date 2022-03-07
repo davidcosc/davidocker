@@ -18,6 +18,7 @@ func (containerCreatorImpl *ContainerCreatorImpl) CreateContainerNamespaces(cmdA
 	// unsharing the PID namespace does not move the calling process to the new PID namespace
 	// but instead moves the next child process
 	// used with clone however, will move the cloned Process immediately
+	fmt.Println(os.Args[0])
 	cmd := exec.Command("/proc/self/exe", append([]string{"containerNamespacesCreated"}, cmdArgs...)...)
 	fmt.Println("Creating container namespaces.....")
 	fmt.Println("* Preparing stdio descriptors.....")
@@ -65,6 +66,9 @@ func (containerCreatorImpl *ContainerCreatorImpl) FinalizeContainer(cmdArgs []st
 	}
 	hostname, err := os.Hostname()
 	fmt.Printf("PID: %d Hostname: %s\n", os.Getpid(), hostname)
+	// processes keep stdio descriptors open by default
+	// exec keeps all currently open fds that are not marked close-on-exec open
+	// any other fds are closed whene execing
 	return syscall.Exec(cmdArgs[0], cmdArgs, []string{})
 }
 
@@ -79,9 +83,9 @@ func changeRootFS() error {
 }
 
 func createMounts() error {
-	//mounting with MS_PRIVATE Flag prevents the mount from propagating to the host
-	//we therefore do not have to do any umount clean up
-	//destroying the mountnamespace removes all mountnamespace specific private mounts
+	// mounting with MS_PRIVATE Flag prevents the mount from propagating to the host
+	// we therefore do not have to do any umount clean up
+	// destroying the mountnamespace removes all mountnamespace specific private mounts
 	fmt.Println("* Creating /proc dir if not exist.")
 	if _, err := os.Stat("/proc"); os.IsNotExist(err) {
 		os.Mkdir("/proc", os.ModeDir)

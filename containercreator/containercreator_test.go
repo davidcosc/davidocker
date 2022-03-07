@@ -8,7 +8,7 @@ import (
 )
 
 func TestCreateContainer(t *testing.T) {
-	if os.Args[1] == "containerNamespacesCreated" {
+	if len(os.Args) > 1 && os.Args[1] == "containerNamespacesCreated" {
 		t.Skip("Process is namespaced")
 	}
 	// given
@@ -42,7 +42,7 @@ stdout
 }
 
 func TestFinalizeContainer(t *testing.T) {
-	if os.Args[1] != "containerNamespacesCreated" {
+	if len(os.Args) != 2 || os.Args[1] != "containerNamespacesCreated" {
 		t.Skip("Process is not namespaced")
 	}
 	// given
