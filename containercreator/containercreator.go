@@ -14,11 +14,10 @@ type ContainerCreator interface {
 
 type ContainerCreatorImpl struct{}
 
+// Sets up and runs a new process with unshared namespaces and redirected stdio.
+// Simply unsharing the namespaces for the current process is not enough.
+// The PID and user namespaces require a new process to take effect.
 func (containerCreatorImpl *ContainerCreatorImpl) CreateContainerNamespaces(cmdArgs []string) error {
-	// unsharing the PID namespace does not move the calling process to the new PID namespace
-	// but instead moves the next child process
-	// used with clone however, will move the cloned Process immediately
-	fmt.Println(os.Args[0])
 	cmd := exec.Command("/proc/self/exe", append([]string{"containerNamespacesCreated"}, cmdArgs...)...)
 	fmt.Println("Creating container namespaces.....")
 	fmt.Println("* Preparing stdio descriptors.....")
@@ -33,6 +32,8 @@ func (containerCreatorImpl *ContainerCreatorImpl) CreateContainerNamespaces(cmdA
 	return err
 }
 
+// Sets up file descriptors for redirecting stdio of the new process.
+// Stdio will be redirected to respective files inside the containers rootfs.
 func prepareStdioDescriptors(cmd *exec.Cmd) (*exec.Cmd, error) {
 	var err error
 	cmd.Stdin, err = os.Create("/root/container/stdin")
@@ -41,7 +42,9 @@ func prepareStdioDescriptors(cmd *exec.Cmd) (*exec.Cmd, error) {
 	return cmd, err
 }
 
+// Sets up namespaces for the new process.
 func prepareNamespaces(cmd *exec.Cmd) *exec.Cmd {
+	// Sets up the namespaces to be created for the new process.
 	fmt.Println("* Preparing namespaces............")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWNS | syscall.CLONE_NEWPID,
@@ -49,6 +52,10 @@ func prepareNamespaces(cmd *exec.Cmd) *exec.Cmd {
 	return cmd
 }
 
+// Sets up hostname, rootfs and mounts inside the new process.
+// Also changes the command being run by the process to the actual command to be containerized.
+// Changing the command by exec closes all open fds that are marked close-on-exec.
+// Since this is not true for the stdio descriptors, they will be kept open.
 func (containerCreatorImpl *ContainerCreatorImpl) FinalizeContainer(cmdArgs []string) error {
 	fmt.Println("Finalizing container..............")
 	fmt.Println("* Setting hostname................")
@@ -66,12 +73,12 @@ func (containerCreatorImpl *ContainerCreatorImpl) FinalizeContainer(cmdArgs []st
 	}
 	hostname, err := os.Hostname()
 	fmt.Printf("PID: %d Hostname: %s\n", os.Getpid(), hostname)
-	// processes keep stdio descriptors open by default
-	// exec keeps all currently open fds that are not marked close-on-exec open
-	// any other fds are closed whene execing
 	return syscall.Exec(cmdArgs[0], cmdArgs, []string{})
 }
 
+// Chroots and cwds into the container directory.
+// After chrooting the cwd still points to the old directory tree.
+// To fix that we change the cwd.
 func changeRootFS() error {
 	fmt.Println("* Chrooting.......................")
 	err := syscall.Chroot("/root/container")
@@ -82,10 +89,12 @@ func changeRootFS() error {
 	return syscall.Chdir("/")
 }
 
+// Setup mandatory container mounts and required directories.
+// Intended for mount setup inside the new mount namespace.
+// Mounts are flagged MS_PRIVATE to prevent propagation to the host.
+// Destroying the mountnamespace removes all mountnamespace specific private mounts.
+// We therefore do not have to do any umount cleanup.
 func createMounts() error {
-	// mounting with MS_PRIVATE Flag prevents the mount from propagating to the host
-	// we therefore do not have to do any umount clean up
-	// destroying the mountnamespace removes all mountnamespace specific private mounts
 	fmt.Println("* Creating /proc dir if not exist.")
 	if _, err := os.Stat("/proc"); os.IsNotExist(err) {
 		os.Mkdir("/proc", os.ModeDir)
