@@ -44,10 +44,9 @@ func prepareStdioDescriptors(cmd *exec.Cmd) (*exec.Cmd, error) {
 
 // Sets up namespaces for the new process.
 func prepareNamespaces(cmd *exec.Cmd) *exec.Cmd {
-	// Sets up the namespaces to be created for the new process.
 	fmt.Println("* Preparing namespaces............")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWNS | syscall.CLONE_NEWPID,
+		Cloneflags: syscall.CLONE_NEWPID | syscall.CLONE_NEWUTS | syscall.CLONE_NEWNS,
 	}
 	return cmd
 }
