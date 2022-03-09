@@ -12,12 +12,12 @@ func TestCreateContainer(t *testing.T) {
 		t.Skip("Process is namespaced")
 	}
 	// given
-	containerCreator := &ContainerCreatorImpl{}
+	cmd := []string{}
 	// when
 	// /proc/self/exe within CreateContainerNamespaces points to the compiled test binary
 	// since all tests to be run are compiled within no additional args need to be passed
 	// the containerNamespacesCreated arg is appended as test binary arg, but has no effect
-	err := containerCreator.CreateContainerNamespaces([]string{})
+	err := CreateContainerNamespaces(cmd)
 	assert.Equal(t, nil, err, "should be equal")
 	time.Sleep(1 * time.Second)
 	actualContainerStdout, err := os.ReadFile("/root/container/stdout")
@@ -46,7 +46,9 @@ func TestFinalizeContainer(t *testing.T) {
 		t.Skip("Process is not namespaced")
 	}
 	// given
-	containerCreator := &ContainerCreatorImpl{}
+	cmd := []string{"/bin/ls"}
 	// when
-	containerCreator.FinalizeContainer([]string{"/bin/ls"})
+	err := FinalizeContainer(cmd)
+	// then
+	assert.Equal(t, nil, err, "should be equal")
 }
