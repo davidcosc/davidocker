@@ -23,20 +23,18 @@ func TestCreateContainer(t *testing.T) {
 	actualContainerStdout, err := os.ReadFile("/root/container/stdout")
 	// then
 	assert.Equal(t, nil, err, "should be equal")
-	expectedContainerStdout := `Finalizing container..............
-* Setting hostname................
-* Chrooting.......................
-* Changing working directory......
-* Creating /proc dir if not exist.
-* Mounting proc...................
-PID: 1 Hostname: container
-bin
-lib
-lib64
-proc
-stderr
-stdin
-stdout
+	expectedContainerStdout := `Finalizing container....................................................................
+* Override / mount with MS_REC / MS_PRIVATE to ensure all further mounts are private....
+* Creating /proc dir if not exist.......................................................
+* Mounting proc.........................................................................
+* Chrooting.............................................................................
+* Changing working directory............................................................
+* Setting hostname......................................................................
+Mount: 492 459 0:43 / /proc rw,relatime - proc proc rw
+
+Hostname: container
+    PID TTY          TIME CMD
+      1 ?        00:00:00 ps
 `
 	assert.Equal(t, expectedContainerStdout, string(actualContainerStdout), "should be equal")
 }
@@ -46,7 +44,7 @@ func TestFinalizeContainer(t *testing.T) {
 		t.Skip("Process is not namespaced")
 	}
 	// given
-	cmd := []string{"/bin/ls"}
+	cmd := []string{"/bin/ps"}
 	// when
 	err := FinalizeContainer(cmd)
 	// then
