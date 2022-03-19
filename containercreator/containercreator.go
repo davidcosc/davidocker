@@ -7,41 +7,68 @@ import (
 	"syscall"
 )
 
+// CreateNetworkNamespace runs a new process with unshared network namespace.
+// After the spawned networkNamespaceCreated process finishes, program flow contiunues
+// in this parent process.
+var CreateNetworkNamespace = func() {
+	cmd := exec.Command("/proc/self/exe", "networkNamespaceCreated")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: syscall.CLONE_NEWNET,
+	}
+	cmd.Run()
+}
+
+// FinalizeNetworkNamespace bind mounts the network namespace to a file inside the
+// container directory. This way the network namespace will persist even after the
+// process terminates. This allows for veth interface tunnels to be setup from
+// within the host network namespace, linking the host and bind mounted network namespace.
+// The mount is flagged MS_SHARED, to allow the container to remove it globally
+// after joining the network namespace later on. Once this is done, the lifetime
+// of the network namespace ist bound to the lifetime of the containerized process.
+var FinalizeNetworkNamespace = func() error {
+	fmt.Println("FinalizeNetworkNamespace................................................................")
+	return nil
+}
+
 // CreateContainerNamespaces runs a new process with unshared namespaces and redirected stdio.
 // The PID and user namespaces require a new process to take effect.
 // We can not unshare them for the current process.
 var CreateContainerNamespaces = func(cmdArgs []string) error {
 	cmd := exec.Command("/proc/self/exe", append([]string{"containerNamespacesCreated"}, cmdArgs...)...)
 	fmt.Println("Creating container namespaces...........................................................")
-	fmt.Println("* Preparing stdio descriptors...........................................................")
 	var err error
-	cmd, err = prepareStdioDescriptors(cmd)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr, err = prepareContainerStdioDescriptors()
 	if err != nil {
 		return err
 	}
-	cmd = prepareNamespaces(cmd)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: syscall.CLONE_NEWPID | syscall.CLONE_NEWNS | syscall.CLONE_NEWUTS,
+	}
 	fmt.Println("* Restarting self in namespaces.........................................................")
 	err = cmd.Start()
 	return err
 }
 
-// PrepareStdioDescriptors sets up stdio file descriptors of the new process.
-// Stdio of the containerized process will be redirected to files inside the containers rootfs.
-var prepareStdioDescriptors = func(cmd *exec.Cmd) (*exec.Cmd, error) {
-	var err error
-	cmd.Stdin, err = os.Create("/root/container/stdin")
-	cmd.Stdout, err = os.Create("/root/container/stdout")
-	cmd.Stderr, err = os.Create("/root/container/stderr")
-	return cmd, err
-}
-
-// Prepare namespaces sets up namespaces for the new process.
-var prepareNamespaces = func(cmd *exec.Cmd) *exec.Cmd {
-	fmt.Println("* Preparing namespaces..................................................................")
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: syscall.CLONE_NEWPID | syscall.CLONE_NEWNS | syscall.CLONE_NEWUTS,
+// PrepareContainerStdioDescriptors sets up file descriptors inside the container rootfs.
+// Stdio of the containerized process will be redirected to these later on.
+var prepareContainerStdioDescriptors = func() (*os.File, *os.File, *os.File, error) {
+	fmt.Println("* Preparing stdio descriptors...........................................................")
+	stdin, err := os.Create("/root/container/stdin")
+	if err != nil {
+		return nil, nil, nil, err
 	}
-	return cmd
+	stdout, err := os.Create("/root/container/stdout")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	stderr, err := os.Create("/root/container/stderr")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return stdin, stdout, stderr, err
 }
 
 // FinalizeContainer sets up hostname, rootfs and mounts inside the new process.
