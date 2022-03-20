@@ -10,7 +10,7 @@ import (
 // CreateNetworkNamespace runs a new process with unshared network namespace.
 // After the spawned networkNamespaceCreated process finishes, program flow contiunues
 // in this parent process.
-var CreateNetworkNamespace = func() {
+var CreateNetworkNamespace = func() error {
 	cmd := exec.Command("/proc/self/exe", "networkNamespaceCreated")
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -18,7 +18,7 @@ var CreateNetworkNamespace = func() {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags: syscall.CLONE_NEWNET,
 	}
-	cmd.Run()
+	return cmd.Run()
 }
 
 // FinalizeNetworkNamespace bind mounts the network namespace to a file inside the
@@ -30,7 +30,12 @@ var CreateNetworkNamespace = func() {
 // of the network namespace ist bound to the lifetime of the containerized process.
 var FinalizeNetworkNamespace = func() error {
 	fmt.Println("FinalizeNetworkNamespace................................................................")
-	return nil
+	netFD, err := os.Create("/root/container/net")
+	defer netFD.Close()
+	if err != nil {
+		return err
+	}
+	return syscall.Mount("/proc/self/ns/net", "/root/container/net", "bind", syscall.MS_BIND|syscall.MS_SHARED, "")
 }
 
 // CreateContainerNamespaces runs a new process with unshared namespaces and redirected stdio.
@@ -77,7 +82,25 @@ var prepareContainerStdioDescriptors = func() (*os.File, *os.File, *os.File, err
 // Since this is not true for the stdio descriptors, they will be kept open.
 var FinalizeContainer = func(cmdArgs []string) error {
 	fmt.Println("Finalizing container....................................................................")
-	err := createMounts()
+	netFD, err := syscall.Open("/root/container/net", syscall.O_RDONLY, 0644)
+	if err != nil {
+		syscall.Unmount("/root/container/net", 0)
+		return err
+	}
+	// 308 is trap code for setns
+	_, _, errNo := syscall.RawSyscall(308, uintptr(netFD), 0, 0)
+	if errNo != 0 {
+		syscall.Close(netFD)
+		syscall.Unmount("/root/container/net", 0)
+		return errNo
+	}
+	err = syscall.Close(netFD)
+	err = syscall.Unmount("/root/container/net", 0)
+	if err != nil {
+		return err
+	}
+	err = os.Remove("/root/container/net")
+	err = createMounts()
 	if err != nil {
 		return err
 	}
