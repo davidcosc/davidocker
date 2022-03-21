@@ -18,13 +18,15 @@ import (
 // Therefore depending on the test process, some test functions will be skipped.
 // Tests are skipped depending on the cmd args passed to the test binary call.
 func TestCreateContainer(t *testing.T) {
-	if len(os.Args) > 1 && os.Args[1] == "containerNamespacesCreated" {
+	if len(os.Args) < 3 {
 		t.Skip("Process is namespaced")
 	}
 	// given
 	cmd := []string{}
 	// when
-	err := CreateContainerNamespaces(cmd)
+	err := CreateNetworkNamespace()
+	assert.Equal(t, nil, err, "should be equal")
+	err = CreateContainerNamespaces(cmd)
 	assert.Equal(t, nil, err, "should be equal")
 	time.Sleep(1 * time.Second)
 	actualContainerStdout, err := os.ReadFile("/root/container/stdout")
@@ -43,11 +45,22 @@ func TestCreateContainer(t *testing.T) {
 	assert.Equal(t, expectedContainerStdout, string(actualContainerStdout), "should be equal")
 }
 
+func TestFinalizeNetworkNamespace(t *testing.T) {
+	if len(os.Args) != 2 || os.Args[1] != "networkNamespaceCreated" {
+		t.Skip("Process is not network namespaced")
+	}
+	// given
+	// when
+	err := FinalizeNetworkNamespace()
+	// then
+	assert.Equal(t, nil, err, "should be equal")
+}
+
 // TestFinalizContainer checks the successful setup of the container after
 // the test binary was called as a new process with namespaces isolation.
 func TestFinalizeContainer(t *testing.T) {
 	if len(os.Args) != 2 || os.Args[1] != "containerNamespacesCreated" {
-		t.Skip("Process is not namespaced")
+		t.Skip("Process is not container namespaced")
 	}
 	// given
 	cmd := []string{"/bin/ps"}
