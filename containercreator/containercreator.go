@@ -14,6 +14,7 @@ const CONTAINER_DIR = "/root/container"
 // After the spawned networkNamespaceCreated process finishes, program flow contiunues
 // in this parent process.
 var CreateNetworkNamespace = func() error {
+	fmt.Println("* Run new process in new network namespace....")
 	cmd := exec.Command("/proc/self/exe", "networkNamespaceCreated")
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -32,7 +33,7 @@ var CreateNetworkNamespace = func() error {
 // after joining the network namespace later on. Once this is done, the lifetime
 // of the network namespace ist bound to the lifetime of the containerized process.
 var FinalizeNetworkNamespace = func() error {
-	fmt.Println("FinalizeNetworkNamespace................................................................")
+	fmt.Println("FinalizeNetworkNamespace......................")
 	netFD, err := os.Create(path.Join(CONTAINER_DIR, "net"))
 	defer netFD.Close()
 	if err != nil {
@@ -46,7 +47,7 @@ var FinalizeNetworkNamespace = func() error {
 // We can not unshare them for the current process.
 var CreateContainerNamespaces = func(cmdArgs []string) error {
 	cmd := exec.Command("/proc/self/exe", append([]string{"containerNamespacesCreated"}, cmdArgs...)...)
-	fmt.Println("Creating container namespaces...........................................................")
+	fmt.Println("Creating container namespaces.................")
 	var err error
 	cmd.Stdin, cmd.Stdout, cmd.Stderr, err = prepareContainerStdioDescriptors()
 	if err != nil {
@@ -55,7 +56,7 @@ var CreateContainerNamespaces = func(cmdArgs []string) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags: syscall.CLONE_NEWPID | syscall.CLONE_NEWNS | syscall.CLONE_NEWUTS,
 	}
-	fmt.Println("* Restarting self in namespaces.........................................................")
+	fmt.Println("* Restarting self in namespaces...............")
 	err = cmd.Start()
 	return err
 }
@@ -63,7 +64,7 @@ var CreateContainerNamespaces = func(cmdArgs []string) error {
 // PrepareContainerStdioDescriptors sets up file descriptors inside the container rootfs.
 // Stdio of the containerized process will be redirected to these later on.
 var prepareContainerStdioDescriptors = func() (*os.File, *os.File, *os.File, error) {
-	fmt.Println("* Preparing stdio descriptors...........................................................")
+	fmt.Println("* Preparing stdio descriptors.................")
 	stdin, err := os.Create(path.Join(CONTAINER_DIR, "stdin"))
 	if err != nil {
 		return nil, nil, nil, err
@@ -84,7 +85,7 @@ var prepareContainerStdioDescriptors = func() (*os.File, *os.File, *os.File, err
 // This is done using the exec syscall. All open fds that are marked close-on-exec are closed.
 // Since this is not true for the stdio descriptors, they will be kept open.
 var FinalizeContainer = func(cmdArgs []string) error {
-	fmt.Println("Finalizing container....................................................................")
+	fmt.Println("Finalizing container..........................")
 	err := joinNetworkNamespace()
 	if err != nil {
 		return err
@@ -97,16 +98,11 @@ var FinalizeContainer = func(cmdArgs []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("* Setting hostname......................................................................")
+	fmt.Println("* Setting hostname............................")
 	err = syscall.Sethostname([]byte("container"))
 	if err != nil {
 		return err
 	}
-	// Use to debug:
-	// content, err := os.ReadFile("/proc/self/mountinfo")
-	// fmt.Printf("Mount: %s\n", content)
-	// hostname, err := os.Hostname()
-	// fmt.Printf("Hostname: %s\n", hostname)
 	return syscall.Exec(cmdArgs[0], cmdArgs, []string{})
 }
 
@@ -115,12 +111,14 @@ var FinalizeContainer = func(cmdArgs []string) error {
 // After cleanup the lifetime of the network namespace is bound to the lifetime of the
 // containerized process.
 var joinNetworkNamespace = func() error {
+	fmt.Println("* Opening network namespace mount.............")
 	netFD, err := syscall.Open(path.Join(CONTAINER_DIR, "net"), syscall.O_RDONLY, 0644)
 	if err != nil {
 		err = syscall.Unmount(path.Join(CONTAINER_DIR, "net"), 0)
 		return err
 	}
-	// 308 is trap code for setns
+	fmt.Println("* Joining network namespace...................")
+	// 308 is trap code for setns syscall
 	_, _, errNo := syscall.RawSyscall(308, uintptr(netFD), 0, 0)
 	if errNo != 0 {
 		err = syscall.Close(netFD)
@@ -129,6 +127,7 @@ var joinNetworkNamespace = func() error {
 	}
 	err = syscall.Close(netFD)
 	err = syscall.Unmount(path.Join(CONTAINER_DIR, "net"), 0)
+	fmt.Println("* Removing network namespace bind mount.......")
 	err = os.Remove(path.Join(CONTAINER_DIR, "net"))
 	return err
 }
@@ -151,16 +150,17 @@ var joinNetworkNamespace = func() error {
 // Mounting the proc filesystem afterwards has the desired effect of correctly displaying
 // PID 1 for the namespaced root process.
 var createMounts = func() error {
-	fmt.Println("* Override / mount with MS_REC / MS_PRIVATE to ensure all further mounts are private....")
+	fmt.Println("* Setting hostname............................")
+	fmt.Println("* Override / mount with MS_REC / MS_PRIVATE...")
 	err := syscall.Mount("", "/", "", syscall.MS_REC|syscall.MS_PRIVATE, "")
 	if err != nil {
 		return err
 	}
-	fmt.Println("* Creating /proc dir if not exist.......................................................")
+	fmt.Println("* Creating /proc dir if not exist.............")
 	if _, err := os.Stat(path.Join(CONTAINER_DIR, "proc")); os.IsNotExist(err) {
 		os.Mkdir(path.Join(CONTAINER_DIR, "proc"), os.ModeDir)
 	}
-	fmt.Println("* Mounting proc.........................................................................")
+	fmt.Println("* Mounting proc...............................")
 	return syscall.Mount("proc", path.Join(CONTAINER_DIR, "proc"), "proc", 0, "")
 }
 
@@ -168,11 +168,11 @@ var createMounts = func() error {
 // After chrooting the cwd still points to the old directory tree.
 // To fix that we change the the cwd to the new root dir.
 var changeRootFS = func() error {
-	fmt.Println("* Chrooting.............................................................................")
+	fmt.Println("* Chrooting...................................")
 	err := syscall.Chroot(CONTAINER_DIR)
 	if err != nil {
 		return err
 	}
-	fmt.Println("* Changing working directory............................................................")
+	fmt.Println("* Changing working directory..................")
 	return syscall.Chdir("/")
 }
