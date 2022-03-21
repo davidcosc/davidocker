@@ -55,7 +55,7 @@ func TestFinalizeNetworkNamespace(t *testing.T) {
 	}
 	// given
 	// when
-	err := FinalizeNetworkNamespace()
+	err := FinalizeNetworkNamespace(CONTAINER_DIR)
 	// then
 	assert.Equal(t, nil, err, "should be equal")
 }

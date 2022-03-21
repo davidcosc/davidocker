@@ -17,7 +17,7 @@ func main() {
 			panic(err)
 		}
 	case "networkNamespaceCreated":
-		err := containercreator.FinalizeNetworkNamespace()
+		err := containercreator.FinalizeNetworkNamespace(containercreator.CONTAINER_DIR)
 		if err != nil {
 			panic(err)
 		}
