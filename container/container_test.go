@@ -1,4 +1,4 @@
-package containercreator
+package container
 
 import (
 	"github.com/stretchr/testify/assert"

@@ -1,4 +1,4 @@
-package containercreator
+package container
 
 import (
 	"fmt"
@@ -6,7 +6,8 @@ import (
 	"syscall"
 )
 
-const CONTAINER_DIR = "/root/container"
+const CONTAINER_ID = "container"
+const CONTAINER_DIR = "/root/" + CONTAINER_ID
 
 // CreateContainerNamespaces runs a new process with unshared namespaces and redirected stdio.
 // The PID and user namespaces require a new process to take effect.
@@ -45,8 +46,7 @@ var FinalizeContainer = func(cmdArgs []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("* Setting hostname............................")
-	err = syscall.Sethostname([]byte("container"))
+	err = setHostname(CONTAINER_ID)
 	if err != nil {
 		return err
 	}
