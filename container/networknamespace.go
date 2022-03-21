@@ -2,11 +2,66 @@ package container
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path"
 	"syscall"
+
+	"github.com/vishvananda/netlink"
 )
+
+// CreateVethInterface sets up a veth tunnel interface inside the host network
+// namespace. It is intended to be used for linking the container network to the
+// host later on. It only sets the ip for the host side of the veth.
+// The ip is statically hard coded, since this implementation is focused on
+// exploring container basics. A full network setup including dhcp, container bridge
+// etc. will not be provided. This results in only one container being able to run
+// at a time.
+var CreateVethInterface = func(name string) error {
+	veth0 := "veth0_" + name
+	veth1 := "veth1_" + name
+	vethExists, err := checkLinkExists(veth0)
+	if err != nil || vethExists {
+		return err
+	}
+	linkAttrs := netlink.NewLinkAttrs()
+	linkAttrs.Name = veth0
+	veth0Struct := &netlink.Veth{
+		LinkAttrs: linkAttrs,
+		PeerName:  veth1,
+	}
+	err = netlink.LinkAdd(veth0Struct)
+	if err != nil {
+		return err
+	}
+	err = netlink.LinkSetUp(veth0Struct)
+	if err != nil {
+		return err
+	}
+	ip, netMask, err := net.ParseCIDR("10.0.0.1/24")
+	if err != nil {
+		return err
+	}
+	ipNet := &net.IPNet{IP: ip, Mask: netMask.Mask}
+	addr := &netlink.Addr{IPNet: ipNet, Label: ""}
+	return netlink.AddrAdd(veth0Struct, addr)
+}
+
+// checkLinkExists iterates through the list of existing interfaces.
+// It returns true if the interface with the specified name already exists.
+var checkLinkExists = func(name string) (bool, error) {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return false, err
+	}
+	for _, link := range links {
+		if link.Attrs().Name == name {
+			return true, err
+		}
+	}
+	return false, err
+}
 
 // CreateNetworkNamespace runs a new process with unshared network namespace.
 // After the spawned networkNamespaceCreated process finishes, program flow contiunues
