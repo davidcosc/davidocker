@@ -8,11 +8,15 @@ import (
 func main() {
 	switch os.Args[1] {
 	case "run":
-		err := container.CreateVethInterface(container.CONTAINER_ID)
+		err := container.CreateNetworkNamespace()
 		if err != nil {
 			panic(err)
 		}
-		err = container.CreateNetworkNamespace()
+		err = container.CreateVethInterface(container.CONTAINER_ID)
+		if err != nil {
+			panic(err)
+		}
+		err = container.MoveVeth1ToNetworkNamespace(container.CONTAINER_ID, container.CONTAINER_DIR)
 		if err != nil {
 			panic(err)
 		}

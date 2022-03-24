@@ -11,62 +11,11 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// CreateVethInterface sets up a veth tunnel interface inside the host network
-// namespace. It is intended to be used for linking the container network to the
-// host later on. It only sets the ip for the host side of the veth.
-// The ip is statically hard coded, since this implementation is focused on
-// exploring container basics. A full network setup including dhcp, container bridge
-// etc. will not be provided. This results in only one container being able to run
-// at a time.
-var CreateVethInterface = func(name string) error {
-	veth0 := "veth0_" + name
-	veth1 := "veth1_" + name
-	vethExists, err := checkLinkExists(veth0)
-	if err != nil || vethExists {
-		return err
-	}
-	linkAttrs := netlink.NewLinkAttrs()
-	linkAttrs.Name = veth0
-	veth0Struct := &netlink.Veth{
-		LinkAttrs: linkAttrs,
-		PeerName:  veth1,
-	}
-	err = netlink.LinkAdd(veth0Struct)
-	if err != nil {
-		return err
-	}
-	err = netlink.LinkSetUp(veth0Struct)
-	if err != nil {
-		return err
-	}
-	ip, netMask, err := net.ParseCIDR("10.0.0.1/24")
-	if err != nil {
-		return err
-	}
-	ipNet := &net.IPNet{IP: ip, Mask: netMask.Mask}
-	addr := &netlink.Addr{IPNet: ipNet, Label: ""}
-	return netlink.AddrAdd(veth0Struct, addr)
-}
-
-// checkLinkExists iterates through the list of existing interfaces.
-// It returns true if the interface with the specified name already exists.
-var checkLinkExists = func(name string) (bool, error) {
-	links, err := netlink.LinkList()
-	if err != nil {
-		return false, err
-	}
-	for _, link := range links {
-		if link.Attrs().Name == name {
-			return true, err
-		}
-	}
-	return false, err
-}
-
 // CreateNetworkNamespace runs a new process with unshared network namespace.
 // After the spawned networkNamespaceCreated process finishes, program flow contiunues
 // in this parent process.
 var CreateNetworkNamespace = func() error {
+	fmt.Println("Creating network namespace....................")
 	fmt.Println("* Run new process in new network namespace....")
 	cmd := exec.Command("/proc/self/exe", "networkNamespaceCreated")
 	cmd.Stdin = os.Stdin
@@ -87,12 +36,91 @@ var CreateNetworkNamespace = func() error {
 // of the network namespace ist bound to the lifetime of the containerized process.
 var FinalizeNetworkNamespace = func(dir string) error {
 	fmt.Println("FinalizeNetworkNamespace......................")
-	netFD, err := os.Create(path.Join(dir, "net"))
+	netFileName := path.Join(dir, "net")
+	netFD, err := os.Create(netFileName)
 	defer netFD.Close()
 	if err != nil {
 		return err
 	}
-	return syscall.Mount("/proc/self/ns/net", path.Join(dir, "net"), "bind", syscall.MS_BIND|syscall.MS_SHARED, "")
+	return syscall.Mount("/proc/self/ns/net", netFileName, "bind", syscall.MS_BIND|syscall.MS_SHARED, "")
+}
+
+// CreateVethInterface sets up a veth tunnel interface inside the host network
+// namespace. It is intended to be used for linking the container network to the
+// host later on. It only sets the ip for the host side of the veth.
+// The ip is statically hard coded, since this implementation is focused on
+// exploring container basics. A full network setup including dhcp, container bridge
+// etc. will not be provided. This results in only one container being able to run
+// at a time.
+var CreateVethInterface = func(name string) error {
+	fmt.Println("Creating veth interface.......................")
+	veth0 := "veth0_" + name
+	veth1 := "veth1_" + name
+	vethExists, err := checkLinkExists(veth0)
+	if err != nil || vethExists {
+		fmt.Println("* Veth already exists.........................")
+		return err
+	}
+	linkAttrs := netlink.NewLinkAttrs()
+	linkAttrs.Name = veth0
+	veth0Struct := &netlink.Veth{
+		LinkAttrs: linkAttrs,
+		PeerName:  veth1,
+	}
+	fmt.Println("* Adding veth link............................")
+	err = netlink.LinkAdd(veth0Struct)
+	if err != nil {
+		return err
+	}
+	err = netlink.LinkSetUp(veth0Struct)
+	if err != nil {
+		return err
+	}
+	ip, netMask, err := net.ParseCIDR("10.0.0.1/24")
+	if err != nil {
+		return err
+	}
+	ipNet := &net.IPNet{IP: ip, Mask: netMask.Mask}
+	fmt.Println("* Adding ip address...........................")
+	addr := &netlink.Addr{IPNet: ipNet, Label: ""}
+	return netlink.AddrAdd(veth0Struct, addr)
+}
+
+// checkLinkExists iterates through the list of existing interfaces.
+// It returns true if the interface with the specified name already exists.
+var checkLinkExists = func(name string) (bool, error) {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return false, err
+	}
+	for _, link := range links {
+		if link.Attrs().Name == name {
+			return true, err
+		}
+	}
+	return false, err
+}
+
+// MoveVeth1ToNetworkNamespace moves one part of the veth interface pair to the
+// bind mounted network namespace.
+var MoveVeth1ToNetworkNamespace = func(name, dir string) error {
+	fmt.Println("*Moving Veth to network namespace.............")
+	veth1 := "veth1_" + name
+	fmt.Println("veth1: " + veth1)
+	veth1Link, err := netlink.LinkByName(veth1)
+	if err != nil {
+		return err
+	}
+	netFD, err := syscall.Open(path.Join(dir, "net"), syscall.O_RDONLY, 0666)
+	defer syscall.Close(netFD)
+	if err != nil {
+		return err
+	}
+	err = netlink.LinkSetNsFd(veth1Link, netFD)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // joinNetworkNamespace is intended to make the containerized process join the previously
