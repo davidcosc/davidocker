@@ -5,7 +5,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path"
 	"syscall"
 
 	"github.com/vishvananda/netlink"
@@ -34,15 +33,15 @@ var CreateNetworkNamespace = func() error {
 // The mount is flagged MS_SHARED, to allow the container to remove it globally
 // after joining the network namespace later on. Once this is done, the lifetime
 // of the network namespace ist bound to the lifetime of the containerized process.
-var FinalizeNetworkNamespace = func(dir string) error {
+var FinalizeNetworkNamespace = func(containerNetFile string) error {
 	fmt.Println("FinalizeNetworkNamespace......................")
-	netFileName := path.Join(dir, "net")
-	netFD, err := os.Create(netFileName)
+	netFD, err := os.Create(containerNetFile)
 	defer netFD.Close()
 	if err != nil {
 		return err
 	}
-	return syscall.Mount("/proc/self/ns/net", netFileName, "bind", syscall.MS_BIND|syscall.MS_SHARED, "")
+	fmt.Println("* Bind mounting network namespace.............")
+	return syscall.Mount("/proc/self/ns/net", containerNetFile, "bind", syscall.MS_BIND|syscall.MS_SHARED, "")
 }
 
 // CreateVethInterface sets up a veth tunnel interface inside the host network
@@ -52,71 +51,54 @@ var FinalizeNetworkNamespace = func(dir string) error {
 // exploring container basics. A full network setup including dhcp, container bridge
 // etc. will not be provided. This results in only one container being able to run
 // at a time.
-var CreateVethInterface = func(name string) error {
+var CreateVethInterface = func(hostVeth, containerVeth string) error {
 	fmt.Println("Creating veth interface.......................")
-	veth0 := "veth0_" + name
-	veth1 := "veth1_" + name
-	vethExists, err := checkLinkExists(veth0)
-	if err != nil || vethExists {
-		fmt.Println("* Veth already exists.........................")
-		return err
-	}
 	linkAttrs := netlink.NewLinkAttrs()
-	linkAttrs.Name = veth0
-	veth0Struct := &netlink.Veth{
+	linkAttrs.Name = hostVeth
+	vethStruct := &netlink.Veth{
 		LinkAttrs: linkAttrs,
-		PeerName:  veth1,
+		PeerName:  containerVeth,
 	}
 	fmt.Println("* Adding veth link............................")
-	err = netlink.LinkAdd(veth0Struct)
+	err := netlink.LinkAdd(vethStruct)
 	if err != nil {
 		return err
 	}
-	err = netlink.LinkSetUp(veth0Struct)
+	return configureLink("10.0.0.1/24", vethStruct)
+
+}
+
+// configureLink brings up the specified link and sets the specified ip address
+var configureLink = func(ipCIDR string, link netlink.Link) error {
+	fmt.Println("* Bringing up link............................")
+	err := netlink.LinkSetUp(link)
 	if err != nil {
 		return err
 	}
-	ip, netMask, err := net.ParseCIDR("10.0.0.1/24")
+	ip, netMask, err := net.ParseCIDR(ipCIDR)
 	if err != nil {
 		return err
 	}
 	ipNet := &net.IPNet{IP: ip, Mask: netMask.Mask}
-	fmt.Println("* Adding ip address...........................")
 	addr := &netlink.Addr{IPNet: ipNet, Label: ""}
-	return netlink.AddrAdd(veth0Struct, addr)
+	fmt.Println("* Adding ip address...........................")
+	return netlink.AddrAdd(link, addr)
 }
 
-// checkLinkExists iterates through the list of existing interfaces.
-// It returns true if the interface with the specified name already exists.
-var checkLinkExists = func(name string) (bool, error) {
-	links, err := netlink.LinkList()
-	if err != nil {
-		return false, err
-	}
-	for _, link := range links {
-		if link.Attrs().Name == name {
-			return true, err
-		}
-	}
-	return false, err
-}
-
-// MoveVeth1ToNetworkNamespace moves one part of the veth interface pair to the
+// MoveContainerVethToNetworkNamespace moves one part of the veth interface pair to the
 // bind mounted network namespace.
-var MoveVeth1ToNetworkNamespace = func(name, dir string) error {
+var MoveContainerVethToNetworkNamespace = func(containerVeth, containerNetFile string) error {
 	fmt.Println("*Moving Veth to network namespace.............")
-	veth1 := "veth1_" + name
-	fmt.Println("veth1: " + veth1)
-	veth1Link, err := netlink.LinkByName(veth1)
+	containerVethLink, err := netlink.LinkByName(containerVeth)
 	if err != nil {
 		return err
 	}
-	netFD, err := syscall.Open(path.Join(dir, "net"), syscall.O_RDONLY, 0666)
+	netFD, err := syscall.Open(containerNetFile, syscall.O_RDONLY, 0644)
 	defer syscall.Close(netFD)
 	if err != nil {
 		return err
 	}
-	err = netlink.LinkSetNsFd(veth1Link, netFD)
+	err = netlink.LinkSetNsFd(containerVethLink, netFD)
 	if err != nil {
 		return err
 	}
@@ -127,11 +109,11 @@ var MoveVeth1ToNetworkNamespace = func(name, dir string) error {
 // set up network namespace. It also attempts to cleanup the now obsolete network bind mount.
 // After cleanup the lifetime of the network namespace is bound to the lifetime of the
 // containerized process.
-var joinNetworkNamespace = func(dir string) error {
+var joinNetworkNamespace = func(containerNetFile, containerVeth string) error {
 	fmt.Println("* Opening network namespace mount.............")
-	netFD, err := syscall.Open(path.Join(dir, "net"), syscall.O_RDONLY, 0644)
+	netFD, err := syscall.Open(containerNetFile, syscall.O_RDONLY, 0644)
 	if err != nil {
-		err = syscall.Unmount(path.Join(dir, "net"), 0)
+		err = syscall.Unmount(containerNetFile, 0)
 		return err
 	}
 	fmt.Println("* Joining network namespace...................")
@@ -139,12 +121,30 @@ var joinNetworkNamespace = func(dir string) error {
 	_, _, errNo := syscall.RawSyscall(308, uintptr(netFD), 0, 0)
 	if errNo != 0 {
 		err = syscall.Close(netFD)
-		err = syscall.Unmount(path.Join(dir, "net"), 0)
+		err = syscall.Unmount(containerNetFile, 0)
 		return errNo
 	}
 	err = syscall.Close(netFD)
-	err = syscall.Unmount(path.Join(dir, "net"), 0)
+	err = syscall.Unmount(containerNetFile, 0)
 	fmt.Println("* Removing network namespace bind mount.......")
-	err = os.Remove(path.Join(dir, "net"))
+	err = os.Remove(containerNetFile)
+	if err != nil {
+		return err
+	}
+	fmt.Println("* Bringing up lo..............................")
+	loLink, err := netlink.LinkByName("lo")
+	if err != nil || loLink == nil {
+		return err
+	}
+	err = netlink.LinkSetUp(loLink)
+	if err != nil {
+		return err
+	}
 	return err
+	//fmt.Println("* Getting container veth link.................")
+	//containerVethLink, err := netlink.LinkByName("veth1_container")
+	//if err != nil || containerVethLink == nil {
+	//	return err
+	//}
+	//return configureLink("10.0.0.2/24", containerVethLink)
 }

@@ -12,11 +12,11 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		err = container.CreateVethInterface(container.CONTAINER_ID)
+		err = container.CreateVethInterface(container.HOST_VETH, container.CONTAINER_VETH)
 		if err != nil {
 			panic(err)
 		}
-		err = container.MoveVeth1ToNetworkNamespace(container.CONTAINER_ID, container.CONTAINER_DIR)
+		err = container.MoveContainerVethToNetworkNamespace(container.CONTAINER_VETH, container.CONTAINER_NET_FILE)
 		if err != nil {
 			panic(err)
 		}
@@ -25,7 +25,7 @@ func main() {
 			panic(err)
 		}
 	case "networkNamespaceCreated":
-		err := container.FinalizeNetworkNamespace(container.CONTAINER_DIR)
+		err := container.FinalizeNetworkNamespace(container.CONTAINER_NET_FILE)
 		if err != nil {
 			panic(err)
 		}

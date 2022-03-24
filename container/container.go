@@ -8,6 +8,9 @@ import (
 
 const CONTAINER_ID = "container"
 const CONTAINER_DIR = "/root/" + CONTAINER_ID
+const CONTAINER_NET_FILE = CONTAINER_DIR + "/net"
+const HOST_VETH = "veth0_" + CONTAINER_ID
+const CONTAINER_VETH = "veth1_" + CONTAINER_ID
 
 // CreateContainerNamespaces runs a new process with unshared namespaces and redirected stdio.
 // The PID and user namespaces require a new process to take effect.
@@ -34,7 +37,7 @@ var CreateContainerNamespaces = func(cmdArgs []string) error {
 // Since this is not true for the stdio descriptors, they will be kept open.
 var FinalizeContainer = func(cmdArgs []string) error {
 	fmt.Println("Finalizing container..........................")
-	err := joinNetworkNamespace(CONTAINER_DIR)
+	err := joinNetworkNamespace(CONTAINER_NET_FILE, CONTAINER_VETH)
 	if err != nil {
 		return err
 	}
