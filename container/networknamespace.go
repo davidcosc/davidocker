@@ -61,8 +61,11 @@ var CreateVethInterface = func(hostVeth, containerVeth string) error {
 		return err
 	}
 	fmt.Println("* Bringing up " + vethStruct.Attrs().Name + ".................")
-	return netlink.LinkSetUp(vethStruct)
-	//return configureLink("10.0.0.1/24", vethStruct)
+	err = netlink.LinkSetUp(vethStruct)
+	if err != nil {
+		return err
+	}
+	return configureLink("10.0.0.1/24", vethStruct)
 
 }
 
@@ -85,7 +88,7 @@ var configureLink = func(ipCIDR string, link netlink.Link) error {
 // MoveContainerVethToNetworkNamespace moves one part of the veth interface pair to the
 // bind mounted network namespace.
 var MoveContainerVethToNetworkNamespace = func(containerVeth, containerNetFile string) error {
-	fmt.Println("*Moving Veth to network namespace.............")
+	fmt.Println("* Moving Veth to network namespace............")
 	containerVethLink, err := netlink.LinkByName(containerVeth)
 	if err != nil {
 		return err
@@ -143,6 +146,8 @@ var joinNetworkNamespace = func(containerNetFile, containerVeth string) error {
 	}
 	fmt.Println("* Bringing up " + containerLink.Attrs().Name + ".................")
 	err = netlink.LinkSetUp(containerLink)
-	return err
-	//return configureLink("10.0.0.2/24", containerVethLink)
+	if err != nil {
+		return err
+	}
+	return configureLink("10.0.0.2/24", containerLink)
 }
