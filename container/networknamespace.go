@@ -60,7 +60,7 @@ var CreateVethInterface = func(hostVeth, containerVeth string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("* Bringing up host link.......................")
+	fmt.Println("* Bringing up " + vethStruct.Attrs().Name + ".................")
 	return netlink.LinkSetUp(vethStruct)
 	//return configureLink("10.0.0.1/24", vethStruct)
 
@@ -132,7 +132,7 @@ var joinNetworkNamespace = func(containerNetFile, containerVeth string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("* Bringing up lo link.........................")
+	fmt.Println("* Bringing up " + loLink.Attrs().Name + "..............................")
 	err = netlink.LinkSetUp(loLink)
 	if err != nil {
 		return err
@@ -141,7 +141,7 @@ var joinNetworkNamespace = func(containerNetFile, containerVeth string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("* Bringing up container link..................")
+	fmt.Println("* Bringing up " + containerLink.Attrs().Name + ".................")
 	err = netlink.LinkSetUp(containerLink)
 	return err
 	//return configureLink("10.0.0.2/24", containerVethLink)
