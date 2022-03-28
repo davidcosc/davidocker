@@ -46,11 +46,7 @@ var FinalizeNetworkNamespace = func(containerNetFile string) error {
 
 // CreateVethInterface sets up a veth tunnel interface inside the host network
 // namespace. It is intended to be used for linking the container network to the
-// host later on. It only sets the ip for the host side of the veth.
-// The ip is statically hard coded, since this implementation is focused on
-// exploring container basics. A full network setup including dhcp, container bridge
-// etc. will not be provided. This results in only one container being able to run
-// at a time.
+// host later on. It sets the host link of the veth pair to up.
 var CreateVethInterface = func(hostVeth, containerVeth string) error {
 	fmt.Println("Creating veth interface.......................")
 	linkAttrs := netlink.NewLinkAttrs()
@@ -64,17 +60,18 @@ var CreateVethInterface = func(hostVeth, containerVeth string) error {
 	if err != nil {
 		return err
 	}
-	return configureLink("10.0.0.1/24", vethStruct)
+	fmt.Println("* Bringing up host link.......................")
+	return netlink.LinkSetUp(vethStruct)
+	//return configureLink("10.0.0.1/24", vethStruct)
 
 }
 
-// configureLink brings up the specified link and sets the specified ip address
+// configureLink sets the ip for the specified link.
+// The ip set is intended to be statically hard coded. This implementation focuses on
+// exploring container basics. A full network setup including dhcp, container bridge
+// etc. will not be provided. This results in only one container being able to run
+// at a time.
 var configureLink = func(ipCIDR string, link netlink.Link) error {
-	fmt.Println("* Bringing up link............................")
-	err := netlink.LinkSetUp(link)
-	if err != nil {
-		return err
-	}
 	ip, netMask, err := net.ParseCIDR(ipCIDR)
 	if err != nil {
 		return err
@@ -131,20 +128,21 @@ var joinNetworkNamespace = func(containerNetFile, containerVeth string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("* Bringing up lo..............................")
 	loLink, err := netlink.LinkByName("lo")
-	if err != nil || loLink == nil {
+	if err != nil {
 		return err
 	}
+	fmt.Println("* Bringing up lo link.........................")
 	err = netlink.LinkSetUp(loLink)
 	if err != nil {
 		return err
 	}
+	containerLink, err := netlink.LinkByName(containerVeth)
+	if err != nil {
+		return err
+	}
+	fmt.Println("* Bringing up container link..................")
+	err = netlink.LinkSetUp(containerLink)
 	return err
-	//fmt.Println("* Getting container veth link.................")
-	//containerVethLink, err := netlink.LinkByName("veth1_container")
-	//if err != nil || containerVethLink == nil {
-	//	return err
-	//}
 	//return configureLink("10.0.0.2/24", containerVethLink)
 }
