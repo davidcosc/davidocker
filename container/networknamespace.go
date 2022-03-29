@@ -32,7 +32,8 @@ var CreateNetworkNamespace = func() error {
 // within the host network namespace, linking the host and bind mounted network namespace.
 // The mount is flagged MS_SHARED, to allow the container to remove it globally
 // after joining the network namespace later on. Once this is done, the lifetime
-// of the network namespace ist bound to the lifetime of the containerized process.
+// of the network namespace and related interfaces is bound to the lifetime of the
+// containerized process.
 var FinalizeNetworkNamespace = func(containerNetFile string) error {
 	fmt.Println("FinalizeNetworkNamespace......................")
 	netFD, err := os.Create(containerNetFile)
@@ -108,7 +109,8 @@ var MoveContainerVethToNetworkNamespace = func(containerVeth, containerNetFile s
 // joinNetworkNamespace is intended to make the containerized process join the previously
 // set up network namespace. It also attempts to cleanup the now obsolete network bind mount.
 // After cleanup the lifetime of the network namespace is bound to the lifetime of the
-// containerized process.
+// containerized process. After joining is complete remaining network interface configurations
+// are completed.
 var joinNetworkNamespace = func(containerNetFile, containerVeth string) error {
 	fmt.Println("* Opening network namespace mount.............")
 	netFD, err := syscall.Open(containerNetFile, syscall.O_RDONLY, 0644)
@@ -117,7 +119,7 @@ var joinNetworkNamespace = func(containerNetFile, containerVeth string) error {
 		return err
 	}
 	fmt.Println("* Joining network namespace...................")
-	// 308 is trap code for setns syscall
+	// 308 is the trap code for setns syscall
 	_, _, errNo := syscall.RawSyscall(308, uintptr(netFD), 0, 0)
 	if errNo != 0 {
 		err = syscall.Close(netFD)
