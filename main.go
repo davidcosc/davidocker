@@ -1,3 +1,8 @@
+/*
+Package main contains functionality to call all functions required for
+creating a single binary basic container. It manages call order an priority
+based on commandline arguments passed.
+*/
 package main
 
 import (
@@ -5,6 +10,10 @@ import (
 	"os"
 )
 
+// main calls required functions to setup a container.
+// The run case defines the initial entry point to container setup.
+// The remaining cases are intended for configurations that require
+// a namespaced process.
 func main() {
 	switch os.Args[1] {
 	case "run":
