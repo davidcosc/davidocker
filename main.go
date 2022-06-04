@@ -1,14 +1,14 @@
 /*
-Package main contains functionality to call all functions required for
-creating a single binary basic container. It manages call order an priority
-based on commandline arguments passed.
+Package main contains functionality required for creating a single binary basic container.
+It manages call order an priority based on commandline arguments passed.
+It sets up an isolated, containerized process and changed the command executed inside that process to the specified binary.
+The process will be isolated in its own pid, mount, uts and network namespace.
+Setup of all necessary mounts and file systems required for these namespaces to work correctly is included.
+The namespace setup is split into separate files for each namespace.
 */
 package main
 
-import (
-	"github.com/davidcosc/davidocker/container"
-	"os"
-)
+import "os"
 
 // main calls required functions to setup a container.
 // The run case defines the initial entry point to container setup.
@@ -17,29 +17,29 @@ import (
 func main() {
 	switch os.Args[1] {
 	case "run":
-		err := container.CreateNetworkNamespace()
+		err := CreateNetworkNamespace()
 		if err != nil {
 			panic(err)
 		}
-		err = container.CreateVethInterface(container.HOST_VETH, container.CONTAINER_VETH)
+		err = CreateVethInterface(HOST_VETH, CONTAINER_VETH)
 		if err != nil {
 			panic(err)
 		}
-		err = container.MoveContainerVethToNetworkNamespace(container.CONTAINER_VETH, container.CONTAINER_NET_FILE)
+		err = MoveContainerVethToNetworkNamespace(CONTAINER_VETH, CONTAINER_NET_FILE)
 		if err != nil {
 			panic(err)
 		}
-		err = container.CreateContainerNamespaces(os.Args[2:])
+		err = CreateContainerNamespaces(os.Args[2:])
 		if err != nil {
 			panic(err)
 		}
 	case "networkNamespaceCreated":
-		err := container.FinalizeNetworkNamespace(container.CONTAINER_NET_FILE)
+		err := FinalizeNetworkNamespace(CONTAINER_NET_FILE)
 		if err != nil {
 			panic(err)
 		}
 	case "containerNamespacesCreated":
-		err := container.FinalizeContainer(os.Args[2:])
+		err := FinalizeContainer(os.Args[2:])
 		if err != nil {
 			panic(err)
 		}

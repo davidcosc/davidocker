@@ -1,11 +1,4 @@
-/*
-Package container contains functions for setting up an isolated, containerized process
-and then changing the command executed inside that process to the specified binary.
-The process will be isolated in its own pid, mount, uts and network namespace.
-Setup of all necessary mounts and file systems required for these namespaces to work
-correctly is included. Namespace setup is split into separate files for each namespace.
-*/
-package container
+package main
 
 import (
 	"fmt"
