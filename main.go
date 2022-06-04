@@ -1,7 +1,7 @@
 /*
-Package main contains functionality required for creating a single binary basic container.
-It manages call order an priority based on commandline arguments passed.
-It sets up an isolated, containerized process and changed the command executed inside that process to the specified binary.
+Package davidocker contains functionality required for creating a single binary basic container.
+It manages call order and priority based on commandline arguments passed.
+It sets up an isolated, containerized process and changes the command executed inside that process to the specified binary.
 The process will be isolated in its own pid, mount, uts and network namespace.
 Setup of all necessary mounts and file systems required for these namespaces to work correctly is included.
 The namespace setup is split into separate files for each namespace.
