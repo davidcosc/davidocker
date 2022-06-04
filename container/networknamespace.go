@@ -13,7 +13,7 @@ import (
 // CreateNetworkNamespace runs a new process with unshared network namespace.
 // After the spawned networkNamespaceCreated process finishes, program flow contiunues
 // in this parent process.
-var CreateNetworkNamespace = func() error {
+func CreateNetworkNamespace() error {
 	fmt.Println("Creating network namespace....................")
 	fmt.Println("* Run new process in new network namespace....")
 	cmd := exec.Command("/proc/self/exe", "networkNamespaceCreated")
@@ -34,7 +34,7 @@ var CreateNetworkNamespace = func() error {
 // after joining the network namespace later on. Once this is done, the lifetime
 // of the network namespace and related interfaces is bound to the lifetime of the
 // containerized process.
-var FinalizeNetworkNamespace = func(containerNetFile string) error {
+func FinalizeNetworkNamespace(containerNetFile string) error {
 	fmt.Println("FinalizeNetworkNamespace......................")
 	netFD, err := os.Create(containerNetFile)
 	defer netFD.Close()
@@ -48,7 +48,7 @@ var FinalizeNetworkNamespace = func(containerNetFile string) error {
 // CreateVethInterface sets up a veth tunnel interface inside the host network
 // namespace. It is intended to be used for linking the container network to the
 // host later on. It sets the host link of the veth pair to up.
-var CreateVethInterface = func(hostVeth, containerVeth string) error {
+func CreateVethInterface(hostVeth, containerVeth string) error {
 	fmt.Println("Creating veth interface.......................")
 	linkAttrs := netlink.NewLinkAttrs()
 	linkAttrs.Name = hostVeth
@@ -75,7 +75,7 @@ var CreateVethInterface = func(hostVeth, containerVeth string) error {
 // exploring container basics. A full network setup including dhcp, container bridge
 // etc. will not be provided. This results in only one container being able to run
 // at a time.
-var configureLink = func(ipCIDR string, link netlink.Link) error {
+func configureLink(ipCIDR string, link netlink.Link) error {
 	ip, netMask, err := net.ParseCIDR(ipCIDR)
 	if err != nil {
 		return err
@@ -88,7 +88,7 @@ var configureLink = func(ipCIDR string, link netlink.Link) error {
 
 // MoveContainerVethToNetworkNamespace moves one part of the veth interface pair to the
 // bind mounted network namespace.
-var MoveContainerVethToNetworkNamespace = func(containerVeth, containerNetFile string) error {
+func MoveContainerVethToNetworkNamespace(containerVeth, containerNetFile string) error {
 	fmt.Println("* Moving Veth to network namespace............")
 	containerVethLink, err := netlink.LinkByName(containerVeth)
 	if err != nil {
@@ -111,7 +111,7 @@ var MoveContainerVethToNetworkNamespace = func(containerVeth, containerNetFile s
 // After cleanup the lifetime of the network namespace is bound to the lifetime of the
 // containerized process. After joining is complete remaining network interface configurations
 // are completed.
-var joinNetworkNamespace = func(containerNetFile, containerVeth string) error {
+func joinNetworkNamespace(containerNetFile, containerVeth string) error {
 	fmt.Println("* Opening network namespace mount.............")
 	netFD, err := syscall.Open(containerNetFile, syscall.O_RDONLY, 0644)
 	if err != nil {

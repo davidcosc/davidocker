@@ -22,7 +22,7 @@ const CONTAINER_VETH = "veth1_" + CONTAINER_ID
 // CreateContainerNamespaces runs a new process with unshared namespaces and redirected stdio.
 // The PID and user namespaces require a new process to take effect.
 // We can not unshare them for the current process.
-var CreateContainerNamespaces = func(cmdArgs []string) error {
+func CreateContainerNamespaces(cmdArgs []string) error {
 	cmd := exec.Command("/proc/self/exe", append([]string{"containerNamespacesCreated"}, cmdArgs...)...)
 	fmt.Println("Creating container namespaces.................")
 	var err error
@@ -42,7 +42,7 @@ var CreateContainerNamespaces = func(cmdArgs []string) error {
 // It changes the command run by the process to the actual command to be containerized.
 // This is done using the exec syscall. All open fds that are marked close-on-exec are closed.
 // Since this is not true for the stdio descriptors, they will be kept open.
-var FinalizeContainer = func(cmdArgs []string) error {
+func FinalizeContainer(cmdArgs []string) error {
 	fmt.Println("Finalizing container..........................")
 	err := joinNetworkNamespace(CONTAINER_NET_FILE, CONTAINER_VETH)
 	if err != nil {

@@ -24,8 +24,7 @@ import (
 // MS_PRIVATE to the mount syscall. All further mounts will be flagged MS_PRIVATE by default.
 // Mounting the proc filesystem afterwards has the desired effect of correctly displaying
 // PID 1 for the namespaced root process.
-var createMounts = func(dir string) error {
-	fmt.Println("* Setting hostname............................")
+func createMounts(dir string) error {
 	fmt.Println("* Override / mount with MS_REC / MS_PRIVATE...")
 	err := syscall.Mount("", "/", "", syscall.MS_REC|syscall.MS_PRIVATE, "")
 	if err != nil {
@@ -42,7 +41,7 @@ var createMounts = func(dir string) error {
 // changeRootFS chroots into the specified directory.
 // After chrooting the cwd still points to the old directory tree.
 // To fix that we change the the cwd to the new root dir.
-var changeRootFS = func(dir string) error {
+func changeRootFS(dir string) error {
 	fmt.Println("* Chrooting...................................")
 	err := syscall.Chroot(dir)
 	if err != nil {

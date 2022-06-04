@@ -37,7 +37,18 @@ Package container contains functions for setting up an isolated\, containerized 
 ## Index
 
 - [Constants](<#constants>)
-- [Variables](<#variables>)
+- [func CreateContainerNamespaces(cmdArgs []string) error](<#func-createcontainernamespaces>)
+- [func CreateNetworkNamespace() error](<#func-createnetworknamespace>)
+- [func CreateVethInterface(hostVeth, containerVeth string) error](<#func-createvethinterface>)
+- [func FinalizeContainer(cmdArgs []string) error](<#func-finalizecontainer>)
+- [func FinalizeNetworkNamespace(containerNetFile string) error](<#func-finalizenetworknamespace>)
+- [func MoveContainerVethToNetworkNamespace(containerVeth, containerNetFile string) error](<#func-movecontainervethtonetworknamespace>)
+- [func changeRootFS(dir string) error](<#func-changerootfs>)
+- [func configureLink(ipCIDR string, link netlink.Link) error](<#func-configurelink>)
+- [func createMounts(dir string) error](<#func-createmounts>)
+- [func joinNetworkNamespace(containerNetFile, containerVeth string) error](<#func-joinnetworknamespace>)
+- [func prepareCustomStdioDescriptors(dir string) (*os.File, *os.File, *os.File, error)](<#func-preparecustomstdiodescriptors>)
+- [func setHostname(hostname string) error](<#func-sethostname>)
 
 
 ## Constants
@@ -62,254 +73,98 @@ const CONTAINER_VETH = "veth1_" + CONTAINER_ID
 const HOST_VETH = "veth0_" + CONTAINER_ID
 ```
 
-## Variables
+## func CreateContainerNamespaces
+
+```go
+func CreateContainerNamespaces(cmdArgs []string) error
+```
 
 CreateContainerNamespaces runs a new process with unshared namespaces and redirected stdio\. The PID and user namespaces require a new process to take effect\. We can not unshare them for the current process\.
 
+## func CreateNetworkNamespace
+
 ```go
-var CreateContainerNamespaces = func(cmdArgs []string) error {
-    cmd := exec.Command("/proc/self/exe", append([]string{"containerNamespacesCreated"}, cmdArgs...)...)
-    fmt.Println("Creating container namespaces.................")
-    var err error
-    cmd.Stdin, cmd.Stdout, cmd.Stderr, err = prepareCustomStdioDescriptors(CONTAINER_DIR)
-    if err != nil {
-        return err
-    }
-    cmd.SysProcAttr = &syscall.SysProcAttr{
-        Cloneflags: syscall.CLONE_NEWPID | syscall.CLONE_NEWNS | syscall.CLONE_NEWUTS,
-    }
-    fmt.Println("* Restarting self in namespaces...............")
-    err = cmd.Start()
-    return err
-}
+func CreateNetworkNamespace() error
 ```
 
 CreateNetworkNamespace runs a new process with unshared network namespace\. After the spawned networkNamespaceCreated process finishes\, program flow contiunues in this parent process\.
 
+## func CreateVethInterface
+
 ```go
-var CreateNetworkNamespace = func() error {
-    fmt.Println("Creating network namespace....................")
-    fmt.Println("* Run new process in new network namespace....")
-    cmd := exec.Command("/proc/self/exe", "networkNamespaceCreated")
-    cmd.Stdin = os.Stdin
-    cmd.Stdout = os.Stdout
-    cmd.Stderr = os.Stderr
-    cmd.SysProcAttr = &syscall.SysProcAttr{
-        Cloneflags: syscall.CLONE_NEWNET,
-    }
-    return cmd.Run()
-}
+func CreateVethInterface(hostVeth, containerVeth string) error
 ```
 
 CreateVethInterface sets up a veth tunnel interface inside the host network namespace\. It is intended to be used for linking the container network to the host later on\. It sets the host link of the veth pair to up\.
 
-```go
-var CreateVethInterface = func(hostVeth, containerVeth string) error {
-    fmt.Println("Creating veth interface.......................")
-    linkAttrs := netlink.NewLinkAttrs()
-    linkAttrs.Name = hostVeth
-    vethStruct := &netlink.Veth{
-        LinkAttrs: linkAttrs,
-        PeerName:  containerVeth,
-    }
-    fmt.Println("* Adding veth link............................")
-    err := netlink.LinkAdd(vethStruct)
-    if err != nil {
-        return err
-    }
-    fmt.Println("* Bringing up " + vethStruct.Attrs().Name + ".................")
-    err = netlink.LinkSetUp(vethStruct)
-    if err != nil {
-        return err
-    }
-    return configureLink("10.0.0.1/24", vethStruct)
+## func FinalizeContainer
 
-}
+```go
+func FinalizeContainer(cmdArgs []string) error
 ```
 
 FinalizeContainer sets up hostname\, rootfs and mounts inside the new process\. It changes the command run by the process to the actual command to be containerized\. This is done using the exec syscall\. All open fds that are marked close\-on\-exec are closed\. Since this is not true for the stdio descriptors\, they will be kept open\.
 
+## func FinalizeNetworkNamespace
+
 ```go
-var FinalizeContainer = func(cmdArgs []string) error {
-    fmt.Println("Finalizing container..........................")
-    err := joinNetworkNamespace(CONTAINER_NET_FILE, CONTAINER_VETH)
-    if err != nil {
-        return err
-    }
-    err = createMounts(CONTAINER_DIR)
-    if err != nil {
-        return err
-    }
-    err = changeRootFS(CONTAINER_DIR)
-    if err != nil {
-        return err
-    }
-    err = setHostname(CONTAINER_ID)
-    if err != nil {
-        return err
-    }
-    return syscall.Exec(cmdArgs[0], cmdArgs, []string{})
-}
+func FinalizeNetworkNamespace(containerNetFile string) error
 ```
 
 FinalizeNetworkNamespace bind mounts the network namespace to a file inside the container directory\. This way the network namespace will persist even after the process terminates\. This allows for veth interface tunnels to be setup from within the host network namespace\, linking the host and bind mounted network namespace\. The mount is flagged MS\_SHARED\, to allow the container to remove it globally after joining the network namespace later on\. Once this is done\, the lifetime of the network namespace and related interfaces is bound to the lifetime of the containerized process\.
 
+## func MoveContainerVethToNetworkNamespace
+
 ```go
-var FinalizeNetworkNamespace = func(containerNetFile string) error {
-    fmt.Println("FinalizeNetworkNamespace......................")
-    netFD, err := os.Create(containerNetFile)
-    defer netFD.Close()
-    if err != nil {
-        return err
-    }
-    fmt.Println("* Bind mounting network namespace.............")
-    return syscall.Mount("/proc/self/ns/net", containerNetFile, "bind", syscall.MS_BIND|syscall.MS_SHARED, "")
-}
+func MoveContainerVethToNetworkNamespace(containerVeth, containerNetFile string) error
 ```
 
 MoveContainerVethToNetworkNamespace moves one part of the veth interface pair to the bind mounted network namespace\.
 
+## func changeRootFS
+
 ```go
-var MoveContainerVethToNetworkNamespace = func(containerVeth, containerNetFile string) error {
-    fmt.Println("* Moving Veth to network namespace............")
-    containerVethLink, err := netlink.LinkByName(containerVeth)
-    if err != nil {
-        return err
-    }
-    netFD, err := syscall.Open(containerNetFile, syscall.O_RDONLY, 0644)
-    defer syscall.Close(netFD)
-    if err != nil {
-        return err
-    }
-    err = netlink.LinkSetNsFd(containerVethLink, netFD)
-    if err != nil {
-        return err
-    }
-    return nil
-}
+func changeRootFS(dir string) error
 ```
 
 changeRootFS chroots into the specified directory\. After chrooting the cwd still points to the old directory tree\. To fix that we change the the cwd to the new root dir\.
 
+## func configureLink
+
 ```go
-var changeRootFS = func(dir string) error {
-    fmt.Println("* Chrooting...................................")
-    err := syscall.Chroot(dir)
-    if err != nil {
-        return err
-    }
-    fmt.Println("* Changing working directory..................")
-    return syscall.Chdir("/")
-}
+func configureLink(ipCIDR string, link netlink.Link) error
 ```
 
 configureLink sets the ip for the specified link\. The ip set is intended to be statically hard coded\. This implementation focuses on exploring container basics\. A full network setup including dhcp\, container bridge etc\. will not be provided\. This results in only one container being able to run at a time\.
 
+## func createMounts
+
 ```go
-var configureLink = func(ipCIDR string, link netlink.Link) error {
-    ip, netMask, err := net.ParseCIDR(ipCIDR)
-    if err != nil {
-        return err
-    }
-    ipNet := &net.IPNet{IP: ip, Mask: netMask.Mask}
-    addr := &netlink.Addr{IPNet: ipNet, Label: ""}
-    fmt.Println("* Adding ip address...........................")
-    return netlink.AddrAdd(link, addr)
-}
+func createMounts(dir string) error
 ```
 
 createMounts sets up mandatory container mounts and required directories\. createMounts should only be called inside a new mountnamespace\. A new mountnamespace is initialized with a copy of all the mount points of its parent\. This also includes all flags of those mount points e\.g\. their propagation type\. We need to take steps to cleanup and reconfigure these mount points according to our needs\. Our goal is to set the mount points in such a way\, that they are cleaned up automatically once the mountnamespace is destroyed\. Also mount points of the container mountnamespace should not have any effect on the parent mountnamespace\. Mount points\, that are not bind mounted and do not propagate to the parent are destroyed once their respective mountnamespace is destroyed\. Mounts flagged MS\_PRIVATE prevent propagation to the host\. To ensure all mounts in the new mount namespace are flagged MS\_PRIVATE we first need to recursively override the propagation flags of all mount points that were copied from the parent\. This is done by only supplying the mount target / and the flags MS\_REC and MS\_PRIVATE to the mount syscall\. All further mounts will be flagged MS\_PRIVATE by default\. Mounting the proc filesystem afterwards has the desired effect of correctly displaying PID 1 for the namespaced root process\.
 
+## func joinNetworkNamespace
+
 ```go
-var createMounts = func(dir string) error {
-    fmt.Println("* Setting hostname............................")
-    fmt.Println("* Override / mount with MS_REC / MS_PRIVATE...")
-    err := syscall.Mount("", "/", "", syscall.MS_REC|syscall.MS_PRIVATE, "")
-    if err != nil {
-        return err
-    }
-    fmt.Println("* Creating /proc dir if not exist.............")
-    if _, err := os.Stat(path.Join(dir, "proc")); os.IsNotExist(err) {
-        os.Mkdir(path.Join(dir, "proc"), os.ModeDir)
-    }
-    fmt.Println("* Mounting proc...............................")
-    return syscall.Mount("proc", path.Join(CONTAINER_DIR, "proc"), "proc", 0, "")
-}
+func joinNetworkNamespace(containerNetFile, containerVeth string) error
 ```
 
 joinNetworkNamespace is intended to make the containerized process join the previously set up network namespace\. It also attempts to cleanup the now obsolete network bind mount\. After cleanup the lifetime of the network namespace is bound to the lifetime of the containerized process\. After joining is complete remaining network interface configurations are completed\.
 
-```go
-var joinNetworkNamespace = func(containerNetFile, containerVeth string) error {
-    fmt.Println("* Opening network namespace mount.............")
-    netFD, err := syscall.Open(containerNetFile, syscall.O_RDONLY, 0644)
-    if err != nil {
-        err = syscall.Unmount(containerNetFile, 0)
-        return err
-    }
-    fmt.Println("* Joining network namespace...................")
+## func prepareCustomStdioDescriptors
 
-    _, _, errNo := syscall.RawSyscall(308, uintptr(netFD), 0, 0)
-    if errNo != 0 {
-        err = syscall.Close(netFD)
-        err = syscall.Unmount(containerNetFile, 0)
-        return errNo
-    }
-    err = syscall.Close(netFD)
-    err = syscall.Unmount(containerNetFile, 0)
-    fmt.Println("* Removing network namespace bind mount.......")
-    err = os.Remove(containerNetFile)
-    if err != nil {
-        return err
-    }
-    loLink, err := netlink.LinkByName("lo")
-    if err != nil {
-        return err
-    }
-    fmt.Println("* Bringing up " + loLink.Attrs().Name + "..............................")
-    err = netlink.LinkSetUp(loLink)
-    if err != nil {
-        return err
-    }
-    containerLink, err := netlink.LinkByName(containerVeth)
-    if err != nil {
-        return err
-    }
-    fmt.Println("* Bringing up " + containerLink.Attrs().Name + ".................")
-    err = netlink.LinkSetUp(containerLink)
-    if err != nil {
-        return err
-    }
-    return configureLink("10.0.0.2/24", containerLink)
-}
+```go
+func prepareCustomStdioDescriptors(dir string) (*os.File, *os.File, *os.File, error)
 ```
 
 prepareCustomStdioDescriptors sets up file descriptors inside the specified directory\. Stdio of the containerized process will be redirected to these later on\.
 
-```go
-var prepareCustomStdioDescriptors = func(dir string) (*os.File, *os.File, *os.File, error) {
-    fmt.Println("* Preparing stdio descriptors.................")
-    stdin, err := os.Create(path.Join(dir, "stdin"))
-    if err != nil {
-        return nil, nil, nil, err
-    }
-    stdout, err := os.Create(path.Join(dir, "stdout"))
-    if err != nil {
-        return nil, nil, nil, err
-    }
-    stderr, err := os.Create(path.Join(dir, "stderr"))
-    if err != nil {
-        return nil, nil, nil, err
-    }
-    return stdin, stdout, stderr, err
-}
-```
+## func setHostname
 
 ```go
-var setHostname = func(hostname string) error {
-    fmt.Println("* Setting hostname............................")
-    return syscall.Sethostname([]byte(hostname))
-}
+func setHostname(hostname string) error
 ```
 
 
